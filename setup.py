@@ -22,11 +22,15 @@ setup(name='badgerproxy',
       install_requires=[
           'setuptools',
           'yay >= 0.0.24',
+          'missingbits',
       ],
       entry_points = {
         "console_scripts": [
             'badgerproxyctl=badgerproxy.scripts.badgerproxyctl:run',
             'badgerproxy=badgerproxy.scripts.badgerproxy:run',
+            ],
+        "zc.buildout": [
+            'default = badgerproxy.recipe:Recipe',
             ],
         }
       )

@@ -1,6 +1,6 @@
 socket: /tmp/badgerproxy.sock
 pidfile: /tmp/badgerpoxy.pid
-resolver-cache: /tmp/badgerproxy.resolvercache
+resolver_cache: /tmp/badgerproxy.resolvercache
 
 services:
   - listen: tcp:8084

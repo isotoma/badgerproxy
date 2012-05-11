@@ -29,13 +29,13 @@ class Resolver(Service):
         self.domains = shelve.open(cachepath)
         self._expire_task = task.LoopingCall(self.expire)
 
-    def add_dns(self, domain, ip, ttl):
+    def add_domain(self, domain, ip, ttl):
         delta = datetime.timedelta(0, 0, ttl)
         expires = datetime.datetime.now() + delta
-        log.msg("Adding '%s' -> %s, will espire at %s" % (domain, ip, expires))
+        log.msg("Adding '%s' -> %s, will expire at %s" % (domain, ip, expires))
         self.domains[domain] = (ip, expires)
 
-    def remove_dns(self, domain):
+    def remove_domain(self, domain):
         log.msg("Removing domain entry for: '%s'" % domain)
         del self.domains[domain]
 
@@ -43,7 +43,7 @@ class Resolver(Service):
         now = datetime.datetime.now()
         for k, v in self.domains.items():
             if v[1] < now:
-                self.remove_dns(domain)
+                self.remove_domain(domain)
 
     def startService(self):
         Service.startService(self)

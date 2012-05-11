@@ -13,17 +13,21 @@
 # limitations under the License.
 
 import sys
+import os
 
 from twisted.internet import reactor
 from optparse import OptionParser
 from twisted.spread import pb
 from twisted.cred.credentials import UsernamePassword
 
-def run():
+from ..config import load_config
 
+def run(configfile=''):
     p = OptionParser("%prog [options] [command]")
-    p.add_option("-S", "--socket", default="", help="Socket to connect to")
+    p.add_option("-c", "--config", default=configfile, help="Config file")
     options, args = p.parse_args()
+
+    config = load_config(configfile)
 
     def success(message):
         print "Task '%s' finished executing" % message
@@ -35,11 +39,15 @@ def run():
         reactor.stop()
 
     def connected(perspective):
-        perspective.callRemote('add-dns', 'www.test.local', "127.0.0.1", 60*60).addCallbacks(success, failure)
+        perspective.callRemote('add_dns', 'www.test.local', "127.0.0.1", 60*60).addCallbacks(success, failure)
         print "connected."
 
+    if not os.path.exists(config.socket):
+        print "socket not found - proxy not running?"
+        return
+
     factory = pb.PBClientFactory()
-    reactor.connectUNIX(options.socket, factory)
+    reactor.connectUNIX(config.socket, factory)
     factory.login(
         UsernamePassword("guest", "guest")).addCallbacks(connected, failure)
 

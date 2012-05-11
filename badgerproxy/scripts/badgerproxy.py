@@ -32,7 +32,7 @@ else:
 
 import yay, StringIO
 from badgerproxy.badgerproxy import BadgerProxy
-
+from ..config import load_config
 
 class StartOptions(ServerOptions):
 
@@ -85,7 +85,7 @@ class BadgerProxyRunner(_SomeApplicationRunner):
     def createOrGetApplication(self):
         application = service.Application("BadgerProxy")
 
-        config = yay.load_uri(self.config.parent["config"])
+        config = self.config.parent.actual_config
 
         badgerproxy = BadgerProxy(config)
         badgerproxy.setServiceParent(application)
@@ -93,7 +93,9 @@ class BadgerProxyRunner(_SomeApplicationRunner):
         return application
 
 
-def run():
+def run(configfile=None):
+    if configfile:
+        Options.optParameters[0][2] = configfile
     config = Options()
 
     try:
@@ -103,12 +105,15 @@ def run():
         print config.opt_help()
         sys.exit(1)
 
+    actual_config = load_config(config["config"])
+    config.actual_config = actual_config
+
     if config.subCommand == "start":
         BadgerProxyRunner(config.subOptions).run()
 
     elif config.subCommand == "stop":
         try:
-            pid = int(open(pidfile).read())
+            pid = int(open(actual_config.pidfile).read())
         except IOError:
             print "Server is not running"
             return 255
