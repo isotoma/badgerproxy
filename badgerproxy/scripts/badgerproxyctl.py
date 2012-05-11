@@ -25,10 +25,6 @@ def run():
     p.add_option("-S", "--socket", default="", help="Socket to connect to")
     options, args = p.parse_args()
 
-
-
-    task = stream.read()
-
     def success(message):
         print "Task '%s' finished executing" % message
         reactor.stop()
@@ -39,13 +35,13 @@ def run():
         reactor.stop()
 
     def connected(perspective):
-        perspective.callRemote('execute', task).addCallbacks(success, failure)
+        perspective.callRemote('add-dns', 'www.test.local', "127.0.0.1", 60*60).addCallbacks(success, failure)
         print "connected."
 
     factory = pb.PBClientFactory()
-    reactor.connectTCP(options.hostname, options.port, factory)
+    reactor.connectUNIX(options.socket, factory)
     factory.login(
-        UsernamePassword(options.username, options.password)).addCallbacks(connected, failure)
+        UsernamePassword("guest", "guest")).addCallbacks(connected, failure)
 
     reactor.run()
 
