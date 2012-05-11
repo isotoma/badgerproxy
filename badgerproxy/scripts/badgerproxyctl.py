@@ -22,6 +22,7 @@ from twisted.cred.credentials import UsernamePassword
 
 from ..config import load_config
 
+
 def run(configfile=''):
     p = OptionParser("%prog [options] [command]")
     p.add_option("-c", "--config", default=configfile, help="Config file")
@@ -39,11 +40,15 @@ def run(configfile=''):
         reactor.stop()
 
     def connected(perspective):
-        perspective.callRemote('add_dns', 'www.test.local', "127.0.0.1", 60*60).addCallbacks(success, failure)
+        perspective.callRemote('add_dns', args[0], args[1], int(args[2])).addCallbacks(success, failure)
         print "connected."
 
     if not os.path.exists(config.socket):
         print "socket not found - proxy not running?"
+        return
+
+    if len(args) != 3:
+        print "expected 3 args"
         return
 
     factory = pb.PBClientFactory()
