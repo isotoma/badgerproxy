@@ -43,7 +43,7 @@ class Resolver(Service):
         now = datetime.datetime.now()
         for k, v in self.domains.items():
             if v[1] < now:
-                self.remove_domain(domain)
+                self.remove_domain(k)
 
     def startService(self):
         Service.startService(self)

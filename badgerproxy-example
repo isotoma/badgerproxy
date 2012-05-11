@@ -17,9 +17,9 @@ services:
           - 443
 
     rewriter:
-        cls: badgerproxy.rewriting.waraningbanner
+        cls: badgerproxy.proxy:RewritingProxyClient
         height: 20px
-        image: https://www.myhost.com/images/banner.gif
+        bannerurl: http://www.foo.com/banner.gif
 
 
   - listen: tcp:8085

@@ -24,6 +24,7 @@ from twisted.application import strports
 from twisted.python import log
 
 from StringIO import StringIO
+import os
 
 banner = """
 <style>
@@ -34,6 +35,11 @@ HTML {
 </style>
 </head>
 """
+
+
+def sibpath(asset):
+    path = os.path.dirname(__file__)
+    return os.path.join(path, asset)
 
 class RewritingProxyClient(ProxyClient):
     def __init__(self, *args, **kwargs):
@@ -74,7 +80,11 @@ class RewritingProxyClient(ProxyClient):
     def handleResponseEnd(self):
         log.msg("handleResponseEnd")
         if self.rewrite:
-            buffer = self.buffer.replace("</head>", banner)
+            banner2 = banner % dict(
+                height = self.config['height'],
+                bannerurl = self.config['bannerurl'],
+                )
+            buffer = self.buffer.replace("</head>", banner2)
             ProxyClient.handleHeader(self, "Content-Length", str(len(buffer)))
             ProxyClient.handleEndHeaders(self)
             ProxyClient.handleResponsePart(self, buffer)
@@ -85,6 +95,22 @@ class RewritingProxyClient(ProxyClient):
 class RewritingProxyClientFactory(ProxyClientFactory):
     protocol = RewritingProxyClient
 
+    def buildProtocol(self, addr):
+        log.msg("RewritingProxyClientFactory.buildProtocol")
+        try:
+            module, cls = self.root.config['rewriter']['cls'].split(":")
+            protocol = getattr(__import__(module, fromlist=['blah']), cls)
+        except KeyError:
+            protocol = ProxyClient
+
+        p = protocol(self.command, self.rest, self.version,
+	            self.headers, self.data, self.father)
+
+        p.factory = self
+        p.root = self.root
+        p.config = self.root.config['rewriter']
+
+        return p
 
 from twisted.internet import ssl
 from twisted.protocols.tls import TLSMemoryBIOProtocol
@@ -109,6 +135,8 @@ class ReverseProxyRequest(Request):
             self.method, self.uri, self.clientproto, self.getAllHeaders(),
             self.content.read(), self)
 
+        clientFactory.root = self.channel.factory.root
+
         port = self.channel.factory.port
         host = self.channel.factory.host
 
@@ -127,13 +155,41 @@ class ReverseProxy(HTTPChannel):
 
 class TunnelProxyRequest (ProxyRequest):
 
-    protocols = {'http': RewritingProxyClientFactory}
+    protocol = RewritingProxyClientFactory
 
     def process(self):
+        if not self.channel.factory.root.is_method_allowed(self.method.upper()):
+            self.setResponseCode(403, 'Forbidden method')
+            self.finish()
+            return
+
         if self.method.upper() == 'CONNECT':
             self._process_connect()
         else:
             return ProxyRequest.process(self)
+
+    def _process(self):
+        parsed = urlparse.urlparse(self.uri)
+        protocol = parsed[0]
+        host = parsed[1]
+        port = self.ports[protocol]
+        if ':' in host:
+            host, port = host.split(':')
+            port = int(port)
+        rest = urlparse.urlunparse(('', '') + parsed[2:])
+        if not rest:
+            rest = rest + '/'
+        headers = self.getAllHeaders().copy()
+        if 'host' not in headers:
+            headers['host'] = host
+        self.content.seek(0, 0)
+        s = self.content.read()
+        clientFactory = self.protocol(self.method, rest, self.clientproto, headers,
+                               s, self)
+
+        clientFactory.root = self.channel.factory.root
+
+        self.reactor.connectTCP(host, port, clientFactory)
 
     def _process_connect(self):
         try:
@@ -158,10 +214,11 @@ class TunnelProxyRequest (ProxyRequest):
                         pass
                 FakeFactory.host = host
                 FakeFactory.port = port
+                FakeFactory.root = self.channel.factory.root
                 rp = ReverseProxy()
                 rp.factory = FakeFactory()
 
-                contextFactory = ssl.DefaultOpenSSLContextFactory('server.key', 'server.crt')
+                contextFactory = ssl.DefaultOpenSSLContextFactory(sibpath('server.key'), sibpath('server.crt'))
 
                 class FakeFactory2:
                     _contextFactory = contextFactory
@@ -180,24 +237,7 @@ class TunnelProxyRequest (ProxyRequest):
 
 
 class TunnelProxy (Proxy):
-    """
-    This class implements a simple web proxy with CONNECT support.
 
-    It inherits from L{Proxy} and expects
-    L{twisted.web.proxy.TunnelProxyFactory} as a factory.
-
-        f = TunnelProxyFactory()
-
-    Make the TunnelProxyFactory a listener on a port as per usual,
-    and you have a fully-functioning web proxy which supports CONNECT.
-    This should support typical web usage with common browsers.
-
-    @ivar _tunnelproto: This is part of a private interface between
-        TunnelProxy and TunnelProtocol. This is either None or a
-        TunnelProtocol connected to a server due to a CONNECT request.
-        If this is set, then the stream from the user agent is forwarded
-        to the target HOST:PORT of the CONNECT request.
-    """
     requestFactory = TunnelProxyRequest
 
     def __init__(self):
@@ -205,20 +245,10 @@ class TunnelProxy (Proxy):
         Proxy.__init__(self)
 
     def _registerTunnel(self, tunnelproto):
-        """
-        This is a private interface for L{TunnelProtocol}.  This sets
-        L{_tunnelproto} to which to forward the stream from the user
-        agent.  This should only be set after the tunnel to the target
-        HOST:PORT is established.
-        """
         assert self._tunnelproto is None, 'Precondition failure: Multiple TunnelProtocols set: self._tunnelproto == %r; new tunnelproto == %r' % (self._tunnelproto, tunnelproto)
         self._tunnelproto = tunnelproto
 
     def dataReceived(self, data):
-        """
-        If there is a tunnel connection, forward the stream; otherwise
-        behave just like Proxy.
-        """
         if self._tunnelproto is None:
             Proxy.dataReceived(self, data)
         else:
@@ -227,6 +257,10 @@ class TunnelProxy (Proxy):
 
 class TunnelProxyFactory (http.HTTPFactory): 
     protocol = TunnelProxy
+
+    def __init__(self, root):
+        http.HTTPFactory.__init__(self)
+        self.root = root
 
 
 class ProxyService(service.MultiService):
@@ -252,7 +286,7 @@ class ProxyService(service.MultiService):
     def setServiceParent(self, parent):
         service.MultiService.setServiceParent(self, parent)
 
-        s = strports.service(self.config['listen'], TunnelProxyFactory())
+        s = strports.service(self.config['listen'], TunnelProxyFactory(self))
         s.setServiceParent(self)
 
 
