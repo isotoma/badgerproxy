@@ -1,0 +1,33 @@
+socket: /tmp/badgerproxy.sock
+pidfile: /tmp/badgerpoxy.pid
+resolvercache: /tmp/badgerproxy.resolvercache
+
+services:
+  - listen: localhost:8084
+    methods:
+        allowed:
+          - HEAD
+          - POST
+          - GET
+          - CONECT
+
+    ports:
+        allowed:
+          - 80
+          - 443
+
+    rewriter:
+        cls: badgerproxy.rewriting.waraningbanner
+        height: 20px
+        image: https://www.myhost.com/images/banner.gif
+
+
+  - listen: localhost:8085
+    methods:
+        allowed:
+          - CONNECT
+
+    ports:
+        allowed:
+          - 22
+
