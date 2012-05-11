@@ -1,9 +1,9 @@
 socket: /tmp/badgerproxy.sock
 pidfile: /tmp/badgerpoxy.pid
-resolvercache: /tmp/badgerproxy.resolvercache
+resolver-cache: /tmp/badgerproxy.resolvercache
 
 services:
-  - listen: localhost:8084
+  - listen: tcp:8084
     methods:
         allowed:
           - HEAD
@@ -22,7 +22,7 @@ services:
         image: https://www.myhost.com/images/banner.gif
 
 
-  - listen: localhost:8085
+  - listen: tcp:8085
     methods:
         allowed:
           - CONNECT

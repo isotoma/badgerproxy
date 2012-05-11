@@ -50,14 +50,14 @@ class PbRealm(object):
         raise NotImplementedError("no interface")
 
 
-class PbService(service.Service):
+class PbService(service.MultiService):
 
     def __init__(self, socket):
-        service.Service.__init__(self)
+        service.MultiService.__init__(self)
         self.socket = socket
 
     def setServiceParent(self, parent):
-        service.Service.__init__(self, parent)
+        service.MultiService.setServiceParent(self, parent)
 
         portal = Portal(PbRealm(parent))
 
@@ -65,6 +65,6 @@ class PbService(service.Service):
         checker.addUser("guest", "guest")
         portal.registerChecker(checker)
 
-        service = strports.service("unix:%s" % socket, pb.PBServerFactory(portal))
-        service.setServiceParent(self)
+        s = strports.service("unix:%s" % self.socket, pb.PBServerFactory(portal))
+        s.setServiceParent(self)
 

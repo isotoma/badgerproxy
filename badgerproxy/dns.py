@@ -26,7 +26,7 @@ class Resolver(Service):
     interval = 60 * 5
 
     def __init__(self, cachepath):
-        self.domains = shelve.load(cachepath)
+        self.domains = shelve.open(cachepath)
         self._expire_task = task.LoopingCall(self.expire)
 
     def add_dns(self, domain, ip, ttl):
@@ -46,7 +46,7 @@ class Resolver(Service):
                 self.remove_dns(domain)
 
     def startService(self):
-        Service.startService(self):
+        Service.startService(self)
         self._expire_task.start(self.interval, now=True)
 
     def stopService(self):

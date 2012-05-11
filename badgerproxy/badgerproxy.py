@@ -24,15 +24,18 @@ class BadgerProxy(MultiService):
         MultiService.__init__(self)
         self.config = config
 
+    def setServiceParent(self, parent):
+        MultiService.setServiceParent(self, parent)
+
         self.pb = PbService(self.config['socket'])
-        self.setServiceParent(self)
+        self.pb.setServiceParent(self)
 
         self.resolver = Resolver(self.config['resolver-cache'])
-        self.setServiceParent(self)
+        self.resolver.setServiceParent(self)
 
-        self.services = []
+        self.proxyservices = []
         for service in self.config['services']:
             p = ProxyService(service)
             p.setServiceParent(self)
-            self.services.append(p)
+            self.proxyservices.append(p)
 

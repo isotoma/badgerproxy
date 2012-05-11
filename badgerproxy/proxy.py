@@ -20,6 +20,9 @@ from twisted.web.proxy import Proxy, ProxyRequest, ProxyClientFactory, ProxyClie
 from twisted.web.proxy import ReverseProxy
 
 from twisted.application import internet
+from twisted.application import strports
+from twisted.python import log
+
 from StringIO import StringIO
 
 banner = """
@@ -226,13 +229,13 @@ class TunnelProxyFactory (http.HTTPFactory):
     protocol = TunnelProxy
 
 
-class ProxyService(service.Service):
+class ProxyService(service.MultiService):
 
     def __init__(self, config):
-        service.Service.__init__(self)
+        service.MultiService.__init__(self)
         self.config = config
 
-    def is_method_allowed(self. method):
+    def is_method_allowed(self, method):
         if not "methods" in self.config:
             return True
         methods = self.config["methods"]
@@ -247,10 +250,10 @@ class ProxyService(service.Service):
         return True
 
     def setServiceParent(self, parent):
-        service.Service.__init__(self, parent)
+        service.MultiService.setServiceParent(self, parent)
 
-        service = strports.service(self.config['listen'], TunnelProxyFactory())
-        service.setServiceParent(self)
+        s = strports.service(self.config['listen'], TunnelProxyFactory())
+        s.setServiceParent(self)
 
 
 if __name__ == "__main__":
