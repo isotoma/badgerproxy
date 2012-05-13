@@ -15,6 +15,7 @@ class Recipe(object):
         self.buildout = buildout
 
         self.parts_directory = os.path.join(self.buildout['buildout']['parts-directory'], self.name)
+        self.var_directory = os.path.join(self.buildout['buildout']['directory'], 'var')
 
         self.options.setdefault('userconf', os.path.abspath(os.path.join(self.parts_directory, "user.conf")))
         self.options.setdefault('systemconf', os.path.abspath(os.path.join(self.parts_directory, "system.conf")))
@@ -27,14 +28,16 @@ class Recipe(object):
         shutil.copyfile(self.options["template"], self.options["userconf"])
         self.options.created(self.options["userconf"])
 
+        pprefix = os.path.join(self.var_directory, self.name)
+
         with open(self.options['systemconf'], "w") as fp:
             fp.write(
-                "socket: /tmp/badgerproxy.socket\n"
-                "pidfile: /tmp/badgerproxy.pid\n"
-                "resolver_cache: /tmp/badgerproxy.resolvercache\n"
+                "socket: %(pprefix)s.socket\n"
+                "pidfile: %(pprefix)s.pid\n"
+                "resolver_cache: %(pprefix)s\n"
                 "\n"
                 ".include:\n"
-                "  - user.conf\n"
+                "  - user.conf\n" % dict(pprefix=pprefix)
                 )
         self.options.created(self.options["systemconf"])
 
