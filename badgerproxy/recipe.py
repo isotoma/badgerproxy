@@ -34,7 +34,7 @@ class Recipe(object):
             fp.write(
                 "socket: %(pprefix)s.socket\n"
                 "pidfile: %(pprefix)s.pid\n"
-                "resolver_cache: %(pprefix)s\n"
+                "resolver_cache: %(pprefix)s.dns\n"
                 "\n"
                 ".include:\n"
                 "  - user.conf\n" % dict(pprefix=pprefix)
