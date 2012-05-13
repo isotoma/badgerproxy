@@ -1,0 +1,4 @@
+include *.rst *.txt
+include badgerproxy/server.key
+include badgerproxy/server.crt
+
