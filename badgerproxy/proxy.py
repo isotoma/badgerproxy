@@ -127,6 +127,12 @@ class ReverseProxyRequest(Request):
         self.reactor = reactor
 
     def process(self):
+        ip = self.channel.factory.root.resolver.lookup(host)
+        if not ip:
+            self.setResponseCode(403, 'Forbidden host')
+            self.finish()
+            return
+
         self.received_headers['host'] = self.channel.factory.host
         if 'accept' in self.received_headers:
             del self.received_headers['accept']
@@ -138,14 +144,13 @@ class ReverseProxyRequest(Request):
         clientFactory.root = self.channel.factory.root
 
         port = self.channel.factory.port
-        host = self.channel.factory.host
 
         if port == 443:
             connect = self.reactor.connectSSL
-            connect(host, port, clientFactory, ssl.ClientContextFactory())
+            connect(ip, port, clientFactory, ssl.ClientContextFactory())
         else:
             connect = self.reactor.connectTCP
-            connect(host, port, clientFactory)
+            connect(ip, port, clientFactory)
 
 
 
@@ -166,7 +171,7 @@ class TunnelProxyRequest (ProxyRequest):
         if self.method.upper() == 'CONNECT':
             self._process_connect()
         else:
-            return ProxyRequest.process(self)
+            self._process()
 
     def _process(self):
         parsed = urlparse.urlparse(self.uri)
@@ -184,12 +189,19 @@ class TunnelProxyRequest (ProxyRequest):
             headers['host'] = host
         self.content.seek(0, 0)
         s = self.content.read()
+
+        ip = self.channel.factory.root.resolver.lookup(host)
+        if not ip:
+            self.setResponseCode(403, 'Forbidden host')
+            self.finish()
+            return
+
         clientFactory = self.protocol(self.method, rest, self.clientproto, headers,
                                s, self)
 
         clientFactory.root = self.channel.factory.root
 
-        self.reactor.connectTCP(host, port, clientFactory)
+        self.reactor.connectTCP(ip, port, clientFactory)
 
     def _process_connect(self):
         try:

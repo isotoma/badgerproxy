@@ -29,6 +29,9 @@ class Resolver(Service):
         self.domains = shelve.open(cachepath)
         self._expire_task = task.LoopingCall(self.expire)
 
+    def lookup(self, domain):
+        return self.domains.get(domain, ('',''))[0]
+
     def add_domain(self, domain, ip, ttl):
         delta = datetime.timedelta(0, 0, ttl)
         expires = datetime.datetime.now() + delta
