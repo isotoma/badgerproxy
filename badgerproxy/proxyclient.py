@@ -14,12 +14,12 @@
 
 from twisted.application import service
 from twisted.python import usage
-from twisted.internet import reactorfu
+from twisted.internet import reactor
 from twisted.internet.protocol import Protocol, ClientFactory
 from twisted.web import http
 from twisted.web.proxy import Proxy, ProxyRequest, ProxyClientFactory, ProxyClient
 from twisted.web.proxy import ReverseProxy
-
+from twisted.internet import ssl
 from twisted.application import internet
 from twisted.application import strports
 from twisted.python import log
@@ -119,18 +119,18 @@ class RewritingProxyClientFactory(ProxyClientFactory):
 
 class Proxier(object):
 
-    def __init__(self, root, host, port):
+    def __init__(self, root, host, port, reactor=reactor):
         self.root = root
-
         self.host = host
         self.port = port
         self.ip = root.parent.resolver.lookup(host)
+        self.reactor = reactor
 
     def permitted(self):
-        return self.ip != None
+        return self.ip
 
     def get_client_factory(self, method, uri, clientproto, headers, data, response):
-        clientFactory = self.protocol(method, uri, clientproto, headers, data, response)
+        clientFactory = RewritingProxyClientFactory(method, uri, clientproto, headers, data, response)
         clientFactory.root = self.root
         clientFactory.proxier = self
         return clientFactory
@@ -141,6 +141,6 @@ class Proxier(object):
 
     def proxy(self, method, uri, clientproto, headers, data, response):
         cf = self.get_client_factory(method, uri, clientproto, headers, data, response)
-        self.reactor.connectTCP(self.ip, self.port, clientFactory)
+        self.reactor.connectTCP(self.ip, self.port, cf)
 
 

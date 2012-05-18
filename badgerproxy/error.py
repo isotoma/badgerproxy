@@ -12,7 +12,7 @@ class ErrorResponse(object):
     def render(self):
         self.father.setResponseCode(self.errorcode, self.error)
         self.father.responseHeaders.addRawHeader("Content-Type", "text/html")
-        self.father.write("<h1>%s/h1>" % self.error)
+        self.father.write("<h1>%s</h1>" % self.error)
         if self.detail:
             self.father.write("<p>%s</p>" % self.detail)
         self.father.finish()

@@ -29,6 +29,7 @@ import urlparse
 
 from .error import ForbiddenResponse
 from .proxyclient import Proxier
+from .internalproxy import InternalProxier
 
 def sibpath(asset):
     path = os.path.dirname(__file__)
@@ -42,7 +43,7 @@ from twisted.internet import reactor
 from twisted.web.http import Request, HTTPChannel
 
 class ReverseProxyRequest(Request):
-    proxyClientFactoryClass = RewritingProxyClientFactory
+    #proxyClientFactoryClass = RewritingProxyClientFactory
 
     def __init__(self, channel, queued, reactor=reactor):
         Request.__init__(self, channel, queued)
@@ -56,7 +57,7 @@ class ReverseProxyRequest(Request):
             del self.received_headers['accept']
 
         p = Proxier(self.channel.factory.root, host, port)
-        if not self.permitted():
+        if not p.permitted():
             ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
 
@@ -75,7 +76,7 @@ class ReverseProxy(HTTPChannel):
 
 class TunnelProxyRequest (ProxyRequest):
 
-    protocol = RewritingProxyClientFactory
+    #protocol = RewritingProxyClientFactory
 
     def process(self):
         if not self.channel.factory.root.is_method_allowed(self.method.upper()):
@@ -104,8 +105,13 @@ class TunnelProxyRequest (ProxyRequest):
         self.content.seek(0, 0)
         s = self.content.read()
 
-        p = Proxier(self.channel.factory.root, host, port)
-        if not self.permitted():
+        if host == "badger":
+            P = InternalProxier
+        else:
+            P = Proxier
+
+        p = P(self.channel.factory.root, host, port)
+        if not p.permitted():
             ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
         p.proxy(self.method, rest, self.clientproto, headers, s, self)
