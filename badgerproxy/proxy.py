@@ -27,6 +27,8 @@ from StringIO import StringIO
 import os
 import urlparse
 
+from .error import ForbiddenResponse
+
 banner = """
 <style>
 HTML {
@@ -134,8 +136,7 @@ class ReverseProxyRequest(Request):
 
         ip = self.channel.factory.root.parent.resolver.lookup(host)
         if not ip:
-            self.setResponseCode(403, 'Forbidden host')
-            self.finish()
+            ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
 
         clientFactory = self.proxyClientFactoryClass(
@@ -165,8 +166,7 @@ class TunnelProxyRequest (ProxyRequest):
 
     def process(self):
         if not self.channel.factory.root.is_method_allowed(self.method.upper()):
-            self.setResponseCode(403, 'Forbidden method')
-            self.finish()
+            ForbiddenResponse(self, "You are not permitted to use this HTTP method").render()
             return
 
         if self.method.upper() == 'CONNECT':
@@ -193,8 +193,7 @@ class TunnelProxyRequest (ProxyRequest):
 
         ip = self.channel.factory.root.parent.resolver.lookup(host)
         if not ip:
-            self.setResponseCode(403, 'Forbidden host')
-            self.finish()
+            ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
 
         clientFactory = self.protocol(self.method, rest, self.clientproto, headers,
@@ -217,8 +216,7 @@ class TunnelProxyRequest (ProxyRequest):
             #restrictedToPort = self.channel.factory.restrictedToPort
             #if (restrictedToPort is not None) and (port != restrictedToPort):
             if port != 443:
-                self.setResponseCode(403, 'Forbidden port')
-                self.finish()
+                ForbiddenResponse(self, "You are not permitted to access this port").render()
             else:
                 #self.reactor.connectTCP(host, port, TunnelProtocolFactory(self, host, port))
 
