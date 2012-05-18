@@ -25,6 +25,7 @@ from twisted.python import log
 
 from StringIO import StringIO
 import os
+import urlparse
 
 banner = """
 <style>
@@ -127,15 +128,15 @@ class ReverseProxyRequest(Request):
         self.reactor = reactor
 
     def process(self):
-        ip = self.channel.factory.root.resolver.lookup(host)
+        host = self.received_headers['host'] = self.channel.factory.host
+        if 'accept' in self.received_headers:
+            del self.received_headers['accept']
+
+        ip = self.channel.factory.root.parent.resolver.lookup(host)
         if not ip:
             self.setResponseCode(403, 'Forbidden host')
             self.finish()
             return
-
-        self.received_headers['host'] = self.channel.factory.host
-        if 'accept' in self.received_headers:
-            del self.received_headers['accept']
 
         clientFactory = self.proxyClientFactoryClass(
             self.method, self.uri, self.clientproto, self.getAllHeaders(),
@@ -190,7 +191,7 @@ class TunnelProxyRequest (ProxyRequest):
         self.content.seek(0, 0)
         s = self.content.read()
 
-        ip = self.channel.factory.root.resolver.lookup(host)
+        ip = self.channel.factory.root.parent.resolver.lookup(host)
         if not ip:
             self.setResponseCode(403, 'Forbidden host')
             self.finish()

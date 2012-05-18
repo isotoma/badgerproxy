@@ -33,7 +33,7 @@ class Resolver(Service):
         return self.domains.get(domain, ('',''))[0]
 
     def add_domain(self, domain, ip, ttl):
-        delta = datetime.timedelta(0, 0, ttl)
+        delta = datetime.timedelta(0, ttl, 0)
         expires = datetime.datetime.now() + delta
         log.msg("Adding '%s' -> %s, will expire at %s" % (domain, ip, expires))
         self.domains[domain] = (ip, expires)
