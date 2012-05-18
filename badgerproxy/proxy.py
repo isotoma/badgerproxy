@@ -28,92 +28,11 @@ import os
 import urlparse
 
 from .error import ForbiddenResponse
-
-banner = """
-<style>
-HTML {
- padding-top: %(height)s;
- background: url('%(bannerurl)s') 0 0 repeat-x !important;
-}
-</style>
-</head>
-"""
-
+from .proxyclient import Proxier
 
 def sibpath(asset):
     path = os.path.dirname(__file__)
     return os.path.join(path, asset)
-
-class RewritingProxyClient(ProxyClient):
-    def __init__(self, *args, **kwargs):
-        ProxyClient.__init__(self, *args, **kwargs)
-        self.rewrite = False
-        self.length = None
-        self.buffer = ''
-
-    def sendHeader(self, name, value):
-        log.msg(">>> %s: %s" % (name, value))
-        if name.lower() == "accept-encoding":
-            value = "identity"
-        ProxyClient.sendHeader(self, name, value)
-
-    def handleHeader(self, key, value):
-        log.msg("<<< %s: %s" % (key, value))
-        if key.lower() == "content-type":
-            if value.startswith("text/html"):
-                self.rewrite = True
-            ProxyClient.handleHeader(self, key, value)
-        elif key.lower() == "content-length":
-            self.length = value
-        else:
-            ProxyClient.handleHeader(self, key, value)
-
-    def handleEndHeaders(self):
-        if not self.rewrite:
-            if self.length:
-                ProxyClient.handleHeader(self, "Content-Length", self.length)
-            ProxyClient.handleEndHeaders(self)
-
-    def handleResponsePart(self, buffer):
-        if self.rewrite:
-            self.buffer += buffer
-        else:
-            ProxyClient.handleResponsePart(self, buffer)
-
-    def handleResponseEnd(self):
-        log.msg("handleResponseEnd")
-        if self.rewrite:
-            banner2 = banner % dict(
-                height = self.config['height'],
-                bannerurl = self.config['bannerurl'],
-                )
-            buffer = self.buffer.replace("</head>", banner2)
-            ProxyClient.handleHeader(self, "Content-Length", str(len(buffer)))
-            ProxyClient.handleEndHeaders(self)
-            ProxyClient.handleResponsePart(self, buffer)
-            self.rewrite = False
-        ProxyClient.handleResponseEnd(self)
-
-
-class RewritingProxyClientFactory(ProxyClientFactory):
-    protocol = RewritingProxyClient
-
-    def buildProtocol(self, addr):
-        log.msg("RewritingProxyClientFactory.buildProtocol")
-        try:
-            module, cls = self.root.config['rewriter']['cls'].split(":")
-            protocol = getattr(__import__(module, fromlist=['blah']), cls)
-        except KeyError:
-            protocol = ProxyClient
-
-        p = protocol(self.command, self.rest, self.version,
-	            self.headers, self.data, self.father)
-
-        p.factory = self
-        p.root = self.root
-        p.config = self.root.config['rewriter']
-
-        return p
 
 from twisted.internet import ssl
 from twisted.protocols.tls import TLSMemoryBIOProtocol
@@ -131,28 +50,22 @@ class ReverseProxyRequest(Request):
 
     def process(self):
         host = self.received_headers['host'] = self.channel.factory.host
+        port = self.channel.factory.port
+
         if 'accept' in self.received_headers:
             del self.received_headers['accept']
 
-        ip = self.channel.factory.root.parent.resolver.lookup(host)
-        if not ip:
+        p = Proxier(self.channel.factory.root, host, port)
+        if not self.permitted():
             ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
 
-        clientFactory = self.proxyClientFactoryClass(
-            self.method, self.uri, self.clientproto, self.getAllHeaders(),
-            self.content.read(), self)
-
-        clientFactory.root = self.channel.factory.root
-
-        port = self.channel.factory.port
-
         if port == 443:
-            connect = self.reactor.connectSSL
-            connect(ip, port, clientFactory, ssl.ClientContextFactory())
+            proxy = p.proxy_ssl
         else:
-            connect = self.reactor.connectTCP
-            connect(ip, port, clientFactory)
+            proxy = p.proxy
+
+        proxy(self.method, self.uri, self.clientproto, self.getAllHeaders(), self.content.read(), self)
 
 
 
@@ -191,17 +104,11 @@ class TunnelProxyRequest (ProxyRequest):
         self.content.seek(0, 0)
         s = self.content.read()
 
-        ip = self.channel.factory.root.parent.resolver.lookup(host)
-        if not ip:
+        p = Proxier(self.channel.factory.root, host, port)
+        if not self.permitted():
             ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
-
-        clientFactory = self.protocol(self.method, rest, self.clientproto, headers,
-                               s, self)
-
-        clientFactory.root = self.channel.factory.root
-
-        self.reactor.connectTCP(ip, port, clientFactory)
+        p.proxy(self.method, rest, self.clientproto, headers, s, self)
 
     def _process_connect(self):
         try:
@@ -300,12 +207,4 @@ class ProxyService(service.MultiService):
         s = strports.service(self.config['listen'], TunnelProxyFactory(self))
         s.setServiceParent(self)
 
-
-if __name__ == "__main__":
-    from twisted.internet import reactor 
-    from twisted.python import log 
-    import sys 
-    log.startLogging(sys.stdout) 
-    reactor.listenTCP(8181, TunnelProxyFactory()) 
-    reactor.run()
 
