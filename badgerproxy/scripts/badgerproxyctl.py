@@ -15,13 +15,25 @@
 import sys
 import os
 
-from twisted.internet import reactor
+from twisted.internet import reactor, defer
 from optparse import OptionParser
 from twisted.spread import pb
 from twisted.cred.credentials import UsernamePassword
 
 from ..config import load_config
 
+@defer.inlineCallbacks
+def _run(config, args):
+    factory = pb.PBClientFactory()
+    reactor.connectUNIX(config.socket, factory)
+    try:
+        perspective = yield factory.login(UsernamePassword("guest", "guest"))
+        yield perspective.callRemote('add_dns', args[0], args[1], int(args[2]))
+        print "Record added"
+    except Exception as e:
+        print "Error: ", str(e)
+
+    reactor.stop()
 
 def run(configfile=''):
     p = OptionParser("%prog [options] [command]")
@@ -29,19 +41,6 @@ def run(configfile=''):
     options, args = p.parse_args()
 
     config = load_config(configfile)
-
-    def success(message):
-        print "Task '%s' finished executing" % message
-        reactor.stop()
-
-    def failure(error):
-        #t = error.trap(DefinedError)
-        print "error received:", error
-        reactor.stop()
-
-    def connected(perspective):
-        perspective.callRemote('add_dns', args[0], args[1], int(args[2])).addCallbacks(success, failure)
-        print "connected."
 
     if not os.path.exists(config.socket):
         print "socket not found - proxy not running?"
@@ -51,10 +50,6 @@ def run(configfile=''):
         print "expected 3 args"
         return
 
-    factory = pb.PBClientFactory()
-    reactor.connectUNIX(config.socket, factory)
-    factory.login(
-        UsernamePassword("guest", "guest")).addCallbacks(connected, failure)
-
+    _run(config, args)
     reactor.run()
 
