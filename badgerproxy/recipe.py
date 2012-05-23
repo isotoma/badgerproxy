@@ -34,6 +34,7 @@ class Recipe(object):
             fp.write(
                 "socket: %(pprefix)s.socket\n"
                 "pidfile: %(pprefix)s.pid\n"
+                "logfile: %(pprefix)s.log\n"
                 "resolver_cache: %(pprefix)s.dns\n"
                 "\n"
                 ".include:\n"

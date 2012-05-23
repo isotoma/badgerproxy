@@ -1,5 +1,6 @@
 socket: /tmp/badgerproxy.sock
 pidfile: /tmp/badgerpoxy.pid
+logfile: /tmp/badgerproxy.log
 resolver_cache: /tmp/badgerproxy.resolvercache
 
 services:

@@ -110,6 +110,7 @@ def run(configfile=None):
 
     if config.subCommand == "start":
         config.subOptions["pidfile"] = actual_config.pidfile
+        config.subOptions["logfile"] = actual_config.logfile
         BadgerProxyRunner(config.subOptions).run()
 
     elif config.subCommand == "stop":
