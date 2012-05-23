@@ -5,30 +5,30 @@ resolver_cache: /tmp/badgerproxy.resolvercache
 
 services:
   - listen: tcp:8084
-    methods:
-        allowed:
-          - HEAD
-          - POST
-          - GET
-          - CONECT
 
-    ports:
-        allowed:
-          - 80
-          - 443
+    rules:
+      - match:
+          source:
+            - 192.168.0.1/8
+            - 127.0.0.1
+          port: 22
+          method: CONNECT
+
+        action: passthru
+
+      - match:
+          port: 22
+        action: deny
+
+      - match:
+          method: CONNECT
+        action: rewrite-ssl
+
+      - action: rewrite
 
     rewriter:
         cls: badgerproxy.proxyclient:RewritingProxyClient
         height: 20px
         bannerurl: http://badger/badgerproxy.gif
 
-
-  - listen: tcp:8085
-    methods:
-        allowed:
-          - CONNECT
-
-    ports:
-        allowed:
-          - 22
 

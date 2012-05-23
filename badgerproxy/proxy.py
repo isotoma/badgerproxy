@@ -31,6 +31,7 @@ from .error import ForbiddenResponse
 from .proxyclient import Proxier
 from .internalproxy import InternalProxier
 from .passthru import PassthruFactory
+from .rules import Rules
 
 def sibpath(asset):
     path = os.path.dirname(__file__)
@@ -77,35 +78,66 @@ class ReverseProxy(HTTPChannel):
 
 class TunnelProxyRequest (ProxyRequest):
 
-    #protocol = RewritingProxyClientFactory
-
     def process(self):
-        if not self.channel.factory.root.is_method_allowed(self.method.upper()):
-            ForbiddenResponse(self, "You are not permitted to use this HTTP method").render()
-            return
-
-        if self.method.upper() == 'CONNECT':
-            self._process_connect()
-        else:
-            self._process()
-
-    def _process(self):
         parsed = urlparse.urlparse(self.uri)
-        protocol = parsed[0]
-        host = parsed[1]
-        port = self.ports[protocol]
+        if self.method.upper() != "CONNECT":
+            protocol = parsed[0]
+            host = parsed[1]
+            port = self.ports[protocol]
+        else:
+            host = parsed[0]
+            port = int(parsed[2])
+
         if ':' in host:
             host, port = host.split(':')
             port = int(port)
+
         rest = urlparse.urlunparse(('', '') + parsed[2:])
         if not rest:
             rest = rest + '/'
+
         headers = self.getAllHeaders().copy()
         if 'host' not in headers:
-            headers['host'] = host
+            headers['host'] = self.host
+
         self.content.seek(0, 0)
         s = self.content.read()
 
+        root = self.channel.factory.root
+        ip = root.parent.resolver.lookup(host)
+
+        if host == "badger":
+            action = "internal"
+        elif not ip:
+            action = "deny"
+        else:
+            action = root.rules.check(
+                source = self.transport.getPeer()[1],
+                destination = ip,
+                port = port,
+                method = self.method,
+                )
+
+        log.msg("Chosen access: %s" % action)
+
+        funcname = "action_" + action.replace("-", "_")
+        if not hasattr(self, funcname):
+            log.msg("Invalid action: %s" % action)
+            funcname = "action_deny"
+
+        getattr(self, funcname)(host, ip, port, rest, headers, s, self.clientproto)
+
+    def action_deny(self, host, ip, port, resturi, headers, data, clientproto):
+        ForbiddenResponse(self, "You have been denied access by the proxy configuration").render()
+
+    def action_passthru(self, host, ip, port, resturi, headers, data, clientproto):
+        self.reactor.connectTCP(ip, port, PassthruFactory(self))
+
+    def action_internal(self, host, ip, port, resturi, headers, data, clientproto):
+        p = InternalProxier(self.channel.factory.root, host, port)
+        p.proxy(self.method, resturi, clientproto, headers, data, self)
+
+    def action_rewrite(self, host, ip, port, resturi, headers, data, clientproto):
         if host == "badger":
             P = InternalProxier
         else:
@@ -115,54 +147,34 @@ class TunnelProxyRequest (ProxyRequest):
         if not p.permitted():
             ForbiddenResponse(self, "You are not permitted to access this host").render()
             return
-        p.proxy(self.method, rest, self.clientproto, headers, s, self)
+        p.proxy(self.method, resturi, clientproto, headers, data, self)
 
-    def _process_connect(self):
-        try:
-            host, portStr = self.uri.split(':', 1)
-            port = int(portStr)
-        except ValueError:
-            # Either the connect parameter is not HOST:PORT or PORT is
-            # not an integer, in which case this request is invalid.
-            self.setResponseCode(400)
-            self.finish()
-            return
+    def action_rewrite_ssl(self, host, ip, port, resturi, headers, data, clientproto):
+        class FakeFactory:
+            def log(self, meh):
+                pass
+        FakeFactory.host = host
+        FakeFactory.port = port
+        FakeFactory.root = self.channel.factory.root
+        rp = ReverseProxy()
+        rp.factory = FakeFactory()
 
-        ip = self.channel.factory.root.parent.resolver.lookup(host)
-        if not ip:
-            ForbiddenResponse(self, "You are not permitted to access this host").render()
-            return
+        contextFactory = ssl.DefaultOpenSSLContextFactory(sibpath('server.key'), sibpath('server.crt'))
 
-        if port == 22:
-            self.reactor.connectTCP(ip, port, PassthruFactory(self))
-        elif port == 443:
-            class FakeFactory:
-                def log(self, meh):
-                    pass
-            FakeFactory.host = host
-            FakeFactory.port = port
-            FakeFactory.root = self.channel.factory.root
-            rp = ReverseProxy()
-            rp.factory = FakeFactory()
+        class FakeFactory2:
+            _contextFactory = contextFactory
+            _isClient = False
+            def registerProtocol(self, meh):
+                pass
+            def unregisterProtocol(self, meh):
+                pass
+        ssl_rp = TLSMemoryBIOProtocol(FakeFactory2(), rp)
 
-            contextFactory = ssl.DefaultOpenSSLContextFactory(sibpath('server.key'), sibpath('server.crt'))
+        self.channel._registerTunnel(ssl_rp)
+        ssl_rp.makeConnection(self.transport)
 
-            class FakeFactory2:
-                _contextFactory = contextFactory
-                _isClient = False
-                def registerProtocol(self, meh):
-                    pass
-                def unregisterProtocol(self, meh):
-                    pass
-            ssl_rp = TLSMemoryBIOProtocol(FakeFactory2(), rp)
-
-            self.channel._registerTunnel(ssl_rp)
-            ssl_rp.makeConnection(self.transport)
-
-            self.setResponseCode(200)
-            self.write("")
-        else:
-            ForbiddenResponse(self, "You are not permitted to access this port").render()
+        self.setResponseCode(200)
+        self.write("")
 
 
 class TunnelProxy (Proxy):
@@ -203,20 +215,7 @@ class ProxyService(service.MultiService):
     def __init__(self, config):
         service.MultiService.__init__(self)
         self.config = config
-
-    def is_method_allowed(self, method):
-        if not "methods" in self.config:
-            return True
-        methods = self.config["methods"]
-        if "allowed" in method:
-            if method in method["allowed"]:
-                return True
-            return False
-        elif "blocked" in method:
-            if method in method["blocked"]:
-                return False
-            return True
-        return True
+        self.rules = Rules(config.get("rules", []))
 
     def setServiceParent(self, parent):
         service.MultiService.setServiceParent(self, parent)

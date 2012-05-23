@@ -23,6 +23,7 @@ setup(name='badgerproxy',
           'setuptools',
           'yay >= 0.0.24',
           'missingbits',
+          'ipaddr',
       ],
       entry_points = {
         "console_scripts": [
