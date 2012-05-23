@@ -30,6 +30,7 @@ import urlparse
 from .error import ForbiddenResponse
 from .proxyclient import Proxier
 from .internalproxy import InternalProxier
+from .passthru import PassthruFactory
 
 def sibpath(asset):
     path = os.path.dirname(__file__)
@@ -125,39 +126,43 @@ class TunnelProxyRequest (ProxyRequest):
             # not an integer, in which case this request is invalid.
             self.setResponseCode(400)
             self.finish()
+            return
+
+        ip = self.channel.factory.root.parent.resolver.lookup(host)
+        if not ip:
+            ForbiddenResponse(self, "You are not permitted to access this host").render()
+            return
+
+        if port == 22:
+            self.reactor.connectTCP(ip, port, PassthruFactory(self))
+        elif port == 443:
+            class FakeFactory:
+                def log(self, meh):
+                    pass
+            FakeFactory.host = host
+            FakeFactory.port = port
+            FakeFactory.root = self.channel.factory.root
+            rp = ReverseProxy()
+            rp.factory = FakeFactory()
+
+            contextFactory = ssl.DefaultOpenSSLContextFactory(sibpath('server.key'), sibpath('server.crt'))
+
+            class FakeFactory2:
+                _contextFactory = contextFactory
+                _isClient = False
+                def registerProtocol(self, meh):
+                    pass
+                def unregisterProtocol(self, meh):
+                    pass
+            ssl_rp = TLSMemoryBIOProtocol(FakeFactory2(), rp)
+
+            self.channel._registerTunnel(ssl_rp)
+            ssl_rp.makeConnection(self.transport)
+
+            self.setResponseCode(200)
+            self.write("")
         else:
-            #restrictedToPort = self.channel.factory.restrictedToPort
-            #if (restrictedToPort is not None) and (port != restrictedToPort):
-            if port != 443:
-                ForbiddenResponse(self, "You are not permitted to access this port").render()
-            else:
-                #self.reactor.connectTCP(host, port, TunnelProtocolFactory(self, host, port))
-
-                class FakeFactory:
-                    def log(self, meh):
-                        pass
-                FakeFactory.host = host
-                FakeFactory.port = port
-                FakeFactory.root = self.channel.factory.root
-                rp = ReverseProxy()
-                rp.factory = FakeFactory()
-
-                contextFactory = ssl.DefaultOpenSSLContextFactory(sibpath('server.key'), sibpath('server.crt'))
-
-                class FakeFactory2:
-                    _contextFactory = contextFactory
-                    _isClient = False
-                    def registerProtocol(self, meh):
-                        pass
-                    def unregisterProtocol(self, meh):
-                        pass
-                ssl_rp = TLSMemoryBIOProtocol(FakeFactory2(), rp)
-
-                self.channel._registerTunnel(ssl_rp)
-                ssl_rp.makeConnection(self.transport)
-
-                self.setResponseCode(200)
-                self.write("")
+            ForbiddenResponse(self, "You are not permitted to access this port").render()
 
 
 class TunnelProxy (Proxy):
