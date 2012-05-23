@@ -7,7 +7,7 @@ class PassthruProtocol(Protocol):
         self.request = request
 
     def connectionMade(self):
-        self.request.channel._registerTunnel(self)
+        self.request.channel._registerSadface(self)
         self.request.setResponseCode(200, 'Connected')
         self.request.write('')
 

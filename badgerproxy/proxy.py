@@ -171,20 +171,26 @@ class TunnelProxy (Proxy):
 
     def __init__(self):
         self._tunnelproto = None
+        self._sadface = None
         Proxy.__init__(self)
 
     def _registerTunnel(self, tunnelproto):
         assert self._tunnelproto is None, 'Precondition failure: Multiple TunnelProtocols set: self._tunnelproto == %r; new tunnelproto == %r' % (self._tunnelproto, tunnelproto)
         self._tunnelproto = tunnelproto
 
+    def _registerSadface(self, sadface):
+        self._sadface = sadface
+
     def dataReceived(self, data):
-        if self._tunnelproto is None:
-            Proxy.dataReceived(self, data)
-        else:
+        if self._tunnelproto:
             self._tunnelproto.dataReceived(data)
+        elif self._sadface:
+            self._sadface.transport.write(data)
+        else:
+            Proxy.dataReceived(self, data)
 
 
-class TunnelProxyFactory (http.HTTPFactory): 
+class TunnelProxyFactory (http.HTTPFactory):
     protocol = TunnelProxy
 
     def __init__(self, root):
