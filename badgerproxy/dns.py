@@ -27,20 +27,33 @@ class Resolver(Service):
 
     def __init__(self, cachepath):
         self.domains = shelve.open(cachepath)
+        self.refresh_ips()
         self._expire_task = task.LoopingCall(self.expire)
 
     def lookup(self, domain):
-        return self.domains.get(domain, ('',''))[0]
+        # All IP addresses are whitelisted if one of their domains are whitelisted.
+        if domain in self.ips:
+            return domain
+        ip = self.domains.get(domain, ('',''))[0]
+        if ip:
+            return ip
+        return None
+
+    def refresh_ips(self):
+        self.ips = set(ip for ip,expire in self.domains.values())
 
     def add_domain(self, domain, ip, ttl):
         delta = datetime.timedelta(0, ttl, 0)
         expires = datetime.datetime.now() + delta
         log.msg("Adding '%s' -> %s, will expire at %s" % (domain, ip, expires))
         self.domains[domain] = (ip, expires)
+        self.refresh_ips()
 
     def remove_domain(self, domain):
         log.msg("Removing domain entry for: '%s'" % domain)
         del self.domains[domain]
+        self.ips = set(self.domains.values())
+        self.refresh_ips()
 
     def expire(self):
         now = datetime.datetime.now()

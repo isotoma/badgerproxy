@@ -5,14 +5,17 @@ export http_proxy=http://localhost:8084
 
 ./bin/badgerproxyctl blog.isotoma.com 87.117.240.7 999999
 ./bin/badgerproxyctl www.isotoma.com 87.117.240.55 999999
+./bin/badgerproxyctl localhost 127.0.0.1 999999
 
 curl -I http://badger/badgerproxy.gif
 curl -I --insecure https://blog.isotoma.com/
 curl -I http://www.isotoma.com/
+curl -I http://127.0.0.1/
 
 curl -i --silent --output /dev/null http://badger/badgerproxy.gif
 curl -i --insecure --silent --output /dev/null https://blog.isotoma.com/
 curl -i --silent --output /dev/null http://www.isotoma.com/
+curl -i --silent --output /dev/null http://127.0.0.1/
 
 corkscrew localhost 8084 localhost 22
 
